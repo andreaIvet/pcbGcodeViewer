@@ -11,20 +11,26 @@ public class MainForm : Form
     private Font ff = new Font("arial",10);
     private Pen pp =new Pen(Brushes.Black); 
     private System.ComponentModel.IContainer components = null;
-    private System.Windows.Forms.Panel disegno;
+    private System.Windows.Forms.PictureBox disegno;
     private System.Windows.Forms.SplitContainer sc;
-    public System.Windows.Forms.RichTextBox txtcode;
-    
+    private System.Windows.Forms.RichTextBox txtcode;
+    public float scale=10F;
+    private List<Gcode> data=new List<Gcode>();
 
-    private struct Gcode
+    private class Gcode 
     {
+        public char letter='G';
         public int code;
         public double x;
         public double y;
         public double z;
+        public double f;
+        public double p;
         public bool vx;
         public bool vy;
         public bool vz;
+        public bool vf;
+        public bool vp;
 
         public Gcode(){
             x=0;
@@ -36,6 +42,45 @@ public class MainForm : Form
             code=-1;
         }
 
+        public Gcode(string line){
+            while(line.Contains("  "))line = line.Replace("  "," ");
+            string[] scode = line.Split(" ");  
+            letter=scode[0][0];
+            code = Int32.Parse(scode[0].Substring(1));        
+            bool conv=((1.5).ToString().Contains(","));
+            for(int k=1;k<scode.Length;k++){
+                if(conv)scode[k] = scode[k].Replace(".", ",");
+                if(scode[k][0]=='(')return;
+                switch(scode[k][0]){
+                    case 'p':
+                    case 'P':
+                        p = double.Parse(scode[k].Substring(1));
+                        vp=true;
+                        break;
+                    case 'f':
+                    case 'F':
+                        f = double.Parse(scode[k].Substring(1));
+                        vf=true;
+                        break;
+                    case 'x':
+                    case 'X':
+                        x = double.Parse(scode[k].Substring(1));
+                        vx=true;
+                        break;
+                    case 'y':
+                    case 'Y':
+                        y = double.Parse(scode[k].Substring(1));
+                        vy=true;
+                        break;
+                    case 'z':
+                    case 'Z':
+                        z = double.Parse(scode[k].Substring(1));
+                        vz = true;
+                        break;
+                }
+            }
+        }
+
         public Gcode(double xx,double yy){
             x=xx;
             y=yy;
@@ -44,6 +89,7 @@ public class MainForm : Form
             vy=true;
             vz=false;
             code=1;
+            letter='G';
         }
         
         public Gcode(double zz){
@@ -54,8 +100,43 @@ public class MainForm : Form
             vy=false;
             vz=true;
             code=1;
+            letter='G';
         }
 
+        public bool Equals(double xx,double yy){
+            return ToString() == (new Gcode(xx,yy)).ToString();
+        }
+
+        public override bool Equals(object obj)
+        {            
+            if (obj == null || GetType() != obj.GetType())
+            {
+                return false;
+            }
+            Gcode o= (Gcode)obj;
+            /*if(o.code!=code)return false;
+            if(vx!=o.vx || vy!=o.vy || vz!=o.vz)return false;
+            if(o.vx && vx)if(o.x!=x)return false;
+            if(o.vy && vy)if(o.y!=y)return false;
+            if(o.vz && vz)if(o.z!=z)return false;*/
+            return ToString()==o.ToString();
+        }
+        
+        // override object.GetHashCode
+        public override int GetHashCode()
+        {
+            return ToString().GetHashCode();
+        }
+
+        public override string ToString(){
+            string str = letter+code.ToString();
+            if(vx)str +=" X"+x.ToString("F2").Replace(",",".");
+            if(vy)str +=" Y"+y.ToString("F2").Replace(",",".");
+            if(vz)str +=" Z"+z.ToString("F2").Replace(",",".");
+            if(vf)str +=" F"+f.ToString("F2").Replace(",",".");
+            if(vp)str +=" P"+p.ToString("F2").Replace(",",".");
+            return str;
+        }
     }
 
     private void onFrmLoad(object sender, EventArgs e)
@@ -70,58 +151,15 @@ public class MainForm : Form
 
     private void onTXT(object sender, EventArgs e)
     {  
-        if(Visible){                      
+        if(Visible){
+            ParseGcode();                      
             Redraw();
         }
     }
-    
-    private string PrintGcode(Gcode c){
-        string str = "G0"+c.code;
-        if(c.vx)str +=" X"+c.x.ToString("F2").Replace(",",".");
-        if(c.vy)str +=" Y"+c.y.ToString("F2").Replace(",",".");
-        if(c.vz)str +=" Z"+c.z.ToString("F2").Replace(",",".");
-        return str;
-    }
-    
-    private Gcode decodeGcode(string line){
-        
-        Gcode p=new Gcode();
 
-        while(line.Contains("  "))line = line.Replace("  "," ");
-        string[] code = line.Split(" ");  
-        
-        if(code[0]=="G1" || code[0]=="G0" || code[0]=="G00")code[0]="G01";
-        if(code[0]!="G01" && code[0]!="G00")return p;
-        if(code[0][2]=='0')p.code = 0;
-        if(code[0][2]=='1')p.code = 1;
-        bool conv=((1.5).ToString().Contains(","));
-        for(int k=1;k<code.Length;k++){
-            if(conv)code[k] = code[k].Replace(".", ",");
-            switch(code[k][0]){
-                case 'x':
-                case 'X':
-                    p.x = double.Parse(code[k].Substring(1));
-                    p.vx=true;
-                    break;
-                case 'y':
-                case 'Y':
-                    p.y = double.Parse(code[k].Substring(1));
-                    p.vy=true;
-                    break;
-                case 'z':
-                case 'Z':
-                    p.z = double.Parse(code[k].Substring(1));
-                    p.vz = true;
-                    break;
-            }
-        }
-         
-        return p;
-    }
 
     public async void ExportToSVG(String FileName)
     {
-       StringReader sr = new StringReader(txtcode.Text);
        StreamWriter sw =new StreamWriter(FileName);
        sw.WriteLine("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
        sw.WriteLine("<svg style=\"fill:none;stroke-width:0.5;stroke-linecap:round;stroke-linejoin:round;stroke:rgb(0%,0%,0%);stroke-opacity:1;stroke-miterlimit:10;\" >");
@@ -130,9 +168,8 @@ public class MainForm : Form
        string path =string.Empty;
        bool scava=false;
        int nline=0;
-       while((line=sr.ReadLine())!=null){
-            Gcode gc = decodeGcode(line);
-            if(gc.code!=1)continue;
+       foreach(Gcode gc in data){
+            if(gc.code!=1 && gc.code!=0)continue;
             if(gc.vz){
                 scava = (gc.z<0.0);
 			} 
@@ -157,18 +194,15 @@ public class MainForm : Form
             double x3, double y3,
             double step)
     {
-        step = 1.0 / 3;
+        step = 1.0 / 10;
+        double x,y;
         for (double i = 0; i < 1.0; i += step)
         {
-            Gcode gc =new Gcode();
-            gc.code =1;
-            gc.vx=true;
-            gc.vy=true;
-            gc.x = Math.Pow(1.0 - i, 3) * x0 + 3.0 * i * Math.Pow(1.0 - i, 2) * x1 + 3.0 * (1.0 - i) * Math.Pow(i, 2) * x2 + Math.Pow(i, 3) * x3;
-            gc.y = Math.Pow(1.0 - i, 3) * y0 + 3.0 * i * Math.Pow(1.0 - i, 2) * y1 + 3.0 * (1.0 - i) * Math.Pow(i, 2) * y2 + Math.Pow(i, 3) * y3;
-            txtcode.AppendText(PrintGcode(gc)+ "\r\n");
+            x = Math.Pow(1.0 - i, 3) * x0 + 3.0 * i * Math.Pow(1.0 - i, 2) * x1 + 3.0 * (1.0 - i) * Math.Pow(i, 2) * x2 + Math.Pow(i, 3) * x3;
+            y = Math.Pow(1.0 - i, 3) * y0 + 3.0 * i * Math.Pow(1.0 - i, 2) * y1 + 3.0 * (1.0 - i) * Math.Pow(i, 2) * y2 + Math.Pow(i, 3) * y3;
+            if(!data[data.Count-1].Equals(x,y))data.Add(new Gcode(x,y));
         }
-        txtcode.AppendText(PrintGcode(new Gcode(x3,y3))+ "\r\n");
+        if(!data[data.Count-1].Equals(x3,y3))data.Add(new Gcode(x3,y3));
     }
 
     public void Coppia2_Beize(
@@ -177,18 +211,15 @@ public class MainForm : Form
             double x2, double y2,
             double step)
     {
-        step = 1.0 / 3;
+        step = 1.0 / 10;
+        double x,y;
         for (double i = 0; i < 1; i += step)
         {
-            Gcode gc =new Gcode();
-            gc.code =1;
-            gc.vx=true;
-            gc.vy=true;
-            gc.x = Math.Pow(1.0 - i, 2) * x0 + 2.0 * (1.0 - i) * i * x1 + Math.Pow(i, 2) * x2;
-            gc.y = Math.Pow(1.0 - i, 2) * y0 + 2.0 * (1.0 - i) * i * y1 + Math.Pow(i, 2) * y2;
-            txtcode.AppendText(PrintGcode(gc)+ "\r\n");
+            x = Math.Pow(1.0 - i, 2) * x0 + 2.0 * (1.0 - i) * i * x1 + Math.Pow(i, 2) * x2;
+            y = Math.Pow(1.0 - i, 2) * y0 + 2.0 * (1.0 - i) * i * y1 + Math.Pow(i, 2) * y2;
+            if(!data[data.Count-1].Equals(x,y))data.Add(new Gcode(x,y));
         }
-        txtcode.AppendText(PrintGcode(new Gcode(x2,y2))+ "\r\n");
+        if(!data[data.Count-1].Equals(x2,y2))data.Add(new Gcode(x2,y2));
     }
 
     public void Coppia2_Linea(
@@ -199,25 +230,23 @@ public class MainForm : Form
         double norma = Math.Sqrt((x1-x0)*(x1-x0)+(y1-y0)*(y1-y0));
         double np = norma/dist;
         double step = 1.0 / np;
+        double x,y;
         for (double i = 0; i < 1; i += step)
         {
-            Gcode gc =new Gcode();
-            gc.code =1;
-            gc.vx=true;
-            gc.vy=true;
-            gc.x = x0 * (1-i) + x1 * (i);
-            gc.y = y0 * (1-i) + y1 * (i);
-            txtcode.AppendText(PrintGcode(gc)+ "\r\n");
+            x = x0 * (1-i) + x1 * (i);
+            y = y0 * (1-i) + y1 * (i);
+            if(!data[data.Count-1].Equals(x,y))data.Add(new Gcode(x,y));
         }
-        txtcode.AppendText(PrintGcode(new Gcode(x1,y1))+ "\r\n");
+        if(!data[data.Count-1].Equals(x1,y1))data.Add(new Gcode(x1,y1));
     }
 
-    public async void ImportSVG(String SvgFileName,double passo)
+    public async void ImportSVG(String SvgFileName,double passo,double dep)
     {
-		txtcode.AppendText(PrintGcode(new Gcode(0,0))+"\r\n");   
-		txtcode.AppendText("G90"+"\r\n"); //COOCRDINATE ASSOLUTE
-		txtcode.AppendText("M03"+"\r\n");
-		txtcode.AppendText("G01 F200.00000"+"\r\n");
+        Text=SvgFileName;
+		data.Add(new Gcode(0,0));   
+		data.Add(new Gcode("G90")); //COOCRDINATE ASSOLUTE
+		data.Add(new Gcode("M03"));
+		data.Add(new Gcode("G01 F200.00000"));
             
         XmlDocument xmldoc = new XmlDocument();
         xmldoc.Load(SvgFileName);
@@ -299,6 +328,7 @@ public class MainForm : Form
             while (vs.Count > 0)
             {
 				Console.WriteLine("process " + vs[0]+" "+vs.Count);
+                if(vs[0].Length==0)vs.RemoveAt(0);
                 switch (vs[0][0])
                 {
                     case 'M':
@@ -323,9 +353,9 @@ public class MainForm : Form
                             y = b;
                             curCom = 'L';
                         }
-                        txtcode.AppendText(PrintGcode(new Gcode(5))+"\r\n");
-                        txtcode.AppendText(PrintGcode(new Gcode(x,y))+"\r\n");
-                        txtcode.AppendText(PrintGcode(new Gcode(-0.15))+"\r\n");
+                        data.Add(new Gcode(5));
+                        data.Add(new Gcode(x,y));
+                        data.Add(new Gcode(-1*dep));
                         xs = x;
                         ys = y;
                         break;
@@ -474,50 +504,72 @@ public class MainForm : Form
             }           
         }
         
-        txtcode.AppendText(PrintGcode(new Gcode(5))+"\r\n");
-        txtcode.AppendText(PrintGcode(new Gcode(0,0))+"\r\n");
-		txtcode.AppendText("M5"+"\r\n");
-		txtcode.AppendText("M9"+"\r\n");
-		txtcode.AppendText("M2"+"\r\n");
+        data.Add(new Gcode(5));
+        data.Add(new Gcode(0,0));
+		data.Add(new Gcode("M5"));
+		data.Add(new Gcode("M9"));
+		data.Add(new Gcode("M2"));
 		Console.WriteLine("end import svg");
         Redraw();
+        filltext();
     }
 
     public async void LoadGC(string FileName)
     {
+        Text=FileName;
         StreamReader fg = new StreamReader(FileName);
         string li;
         while((li=fg.ReadLine())!=null){ 
-            li=li.Replace("G1", "G01");
-            txtcode.AppendText(li+ "\r\n");	               
+            if(li.Length==0)continue;
+            if(li[0]=='(')continue;
+            data.Add(new Gcode(li));	               
         }
         Redraw();
+        filltext();
     }
 
-    private async void Redraw()
+    public void SaveGcode(string Filename){
+        StreamWriter sw =new StreamWriter(Filename);
+        sw.WriteLine(txtcode.Text);
+        sw.Flush();
+        sw.Close();
+    }
+
+    private void ParseGcode()
     {
-       StringReader sr =new StringReader(txtcode.Text);
-       float LL =disegno.ClientSize.Width;
-       float HH =disegno.ClientSize.Height;
-       Bitmap bmp =new Bitmap((int)LL,(int)HH); 
+        data.Clear();
+        StringReader sr =new StringReader(txtcode.Text);
+        string line;
+        while((line=sr.ReadLine())!=null)
+        {
+            if(line.Length==0)continue;
+            Gcode gc = new Gcode(line);
+            data.Add(gc);
+        } 
+    }
+
+    public void filltext(){
+        txtcode.Clear();
+        foreach(Gcode gc in data)
+        {
+            txtcode.AppendText(gc.ToString()+'\r'+'\n');
+        }
+    }
+
+    public async void Redraw()
+    {
+       if(data.Count==0)return;
 	   Pen blackPen = new Pen(Color.Red, 2);
 	   Pen blackGreen = new Pen(Color.Green, 2);
 	   Pen cPen=blackPen;
-       Graphics g =Graphics.FromImage(bmp);
-       g.FillRectangle(Brushes.White,0,0,LL,HH);
-       List<Gcode> data =new List<Gcode>();
-       string line;
 
        double minx=Double.MaxValue;
        double miny=Double.MaxValue;
        double maxx=0;
        double maxy=0;
-       float scale=1F;
-       
-       while((line=sr.ReadLine())!=null)
+
+       foreach(Gcode gc in data)
        {
-            Gcode gc = decodeGcode(line);
-            if(gc.code!=1)continue;
             if(gc.vx){
                 if(gc.x<minx){
                     minx = gc.x;
@@ -534,11 +586,11 @@ public class MainForm : Form
                     maxy = gc.y;
                 }
             }
-            data.Add(gc);
        }
 
-       if(LL<HH)scale=(float)(LL/Math.Abs(maxx-minx));
-       else scale=(float)(HH/Math.Abs(maxy-miny));
+       Bitmap bmp =new Bitmap((int)((maxx-minx)*scale),(int)((maxy-miny)*scale)); 
+       Graphics g =Graphics.FromImage(bmp);
+       g.FillRectangle(Brushes.White,0,0,bmp.Width,bmp.Height);
        
        double xo=minx;
        double yo=miny;
@@ -553,39 +605,43 @@ public class MainForm : Form
                 double y=gc.y-miny;
                 if(x>0.0 && y>0.0){
                     g.DrawLine(cPen,
-                    (int)(xo*scale)+20,
-                    (int)(yo*scale)+20,
-                    (int)(x*scale)+20,
-                    (int)(y*scale)+20);
+                    (int)(xo*scale),
+                    (int)(yo*scale),
+                    (int)(x*scale),
+                    (int)(y*scale));
                     g.FillEllipse(Brushes.Black,
-                    (int)(x*scale)-3+20,
-                    (int)(y*scale)-3+20,6,6);												
+                    (int)(x*scale)-3,
+                    (int)(y*scale)-3,6,6);												
                     xo=x;
                     yo=y;
                 }
             }
        }
        g.Dispose();
-       disegno.BackgroundImage = bmp;
+       //disegno.BackgroundImage = bmp;
+       disegno.Image = bmp;
     }
+
     
     private void InitializeComponent()
     {
-        
-        disegno =new Panel();  
-        disegno.Dock = DockStyle.Fill;
-        disegno.HorizontalScroll.Enabled=false;
-        disegno.HorizontalScroll.Visible=false;
-        disegno.VerticalScroll.Enabled=false;
-        disegno.VerticalScroll.Visible=false;  
-        disegno.AutoScroll=false;
-        disegno.BackgroundImageLayout= ImageLayout.Center;
+
+        disegno =new PictureBox();  
+        //disegno.Dock = DockStyle.Fill;
+        disegno.SizeMode = PictureBoxSizeMode.AutoSize;
+        //disegno.HorizontalScroll.Enabled=true;
+        //disegno.HorizontalScroll.Visible=true;
+        //disegno.VerticalScroll.Enabled=true;
+        //disegno.VerticalScroll.Visible=true;  
+        //disegno.AutoScroll=true;
+        //disegno.BackgroundImageLayout= ImageLayout.Center;
 
         sc =new SplitContainer();
         sc.Dock = DockStyle.Fill;        
         txtcode =new RichTextBox();
         txtcode.Dock = DockStyle.Fill;
         sc.Panel2.Controls.Add(disegno);
+        sc.Panel2.AutoScroll=true;
         sc.Panel1.Controls.Add(txtcode);
 
         this.components = new System.ComponentModel.Container();
