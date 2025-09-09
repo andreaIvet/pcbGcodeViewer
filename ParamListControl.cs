@@ -10,8 +10,8 @@ public class ParamListItemControl : Panel
 
         Control lbl = Controls[1];
         Control txt = Controls[0];
-        int w = ClientRectangle.Width / 3 -2;
-        int h = ClientRectangle.Height -2;
+        int w = ClientRectangle.Width / 3 - 2;
+        int h = ClientRectangle.Height - 2;
         lbl.Height = h;
         txt.Height = h;
         lbl.Width = w;
@@ -22,9 +22,9 @@ public class ParamListItemControl : Panel
         txt.Top = 0;
     }
 
-    public ParamListItemControl(string desc, Control cc,int h) : base()
+    public ParamListItemControl(string desc, Control cc, int h) : base()
     {
-        Height =h;
+        Height = h;
         Label lbl = new Label();
         lbl.Text = desc;
         lbl.TextAlign = ContentAlignment.TopRight;

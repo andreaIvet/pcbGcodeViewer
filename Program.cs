@@ -8,7 +8,7 @@ static class Program
     /// </summary>
     [STAThread]
     static void Main()
-    {        
+    {
         Application.Run(new MainFormMDI());
-    }    
+    }
 }
