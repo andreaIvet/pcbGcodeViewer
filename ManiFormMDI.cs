@@ -4,6 +4,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Xml;
 using System.IO;
+using System.IO.Ports;
 using static MainForm;
 using System.Drawing;
 using System.Diagnostics;
@@ -11,6 +12,11 @@ using System.Threading;
 
 public class MainFormMDI : Form
 {
+    public System.IO.Ports.SerialPort sp = new SerialPort();
+    private ConsolleControl tlog = new ConsolleControl(7);
+    private Queue<Gcode> connbuf = new Queue<Gcode>();
+    public bool serialBusy = false;
+
     private void onSVG_imp(object sender, EventArgs e)
     {
         OpenFileDialog ofd = new OpenFileDialog();
@@ -31,9 +37,7 @@ public class MainFormMDI : Form
             {
                 MainForm f = new MainForm();
                 f.MdiParent = this;
-                List<Gcode> data = new List<Gcode>();
-                f.ImportSVG(ofd.FileName, double.Parse(txtMPasso.Text), double.Parse(txtProf.Text), double.Parse(txtscale.Text), data);
-                f.filltext(data);
+                f.ImportSVG(ofd.FileName, double.Parse(txtMPasso.Text), double.Parse(txtProf.Text), double.Parse(txtscale.Text));
                 f.Show();
             }
         }
@@ -94,8 +98,8 @@ public class MainFormMDI : Form
                 while (!pr.HasExited) Thread.Sleep(500);
                 onAggiungi(fn + "-bk.ngc",f);
                 onAggiungi(fn + "-drill.ngc",f);
-                f.Print(new Gcode("M5"));
-                f.Print(new Gcode("M2"));
+                f.txtcode.Items.Add(new Gcode("M5"));
+                f.txtcode.Items.Add(new Gcode("M2"));
             }
         }
     }
@@ -136,22 +140,17 @@ public class MainFormMDI : Form
 
     private void onAggiungi(string FileName,MainForm f)
     {
-        List<Gcode> data = new List<Gcode>();
-        f.ParseGcode(data);
-
         StreamReader fg = new StreamReader(FileName);
         string li;
-
+        f.Hide();
         while ((li = fg.ReadLine()) != null)
         {
             if (li.Length == 0) continue;
             if (li[0] == '(') continue;
             Gcode gg = new Gcode(li);
-            if ((gg.letter == 'G' && (gg.code == 0 || gg.code == 1)) || (gg.letter == 'M' && gg.code == 3)) data.Add(new Gcode(li));
+            if ((gg.letter == 'G' && (gg.code == 0 || gg.code == 1)) || (gg.letter == 'M' && gg.code == 3)) f.txtcode.Items.Add(gg);
         }
-
         fg.Close();
-        f.filltext(data);
         f.Redraw();
         f.Show();
     }
@@ -184,53 +183,133 @@ public class MainFormMDI : Form
         }
     }
 
-    private void onZoomP(object sender, EventArgs e)
+
+    private void onSetupSerialPort(object sender, EventArgs e)
     {
-        MainForm f = (MainForm)this.ActiveMdiChild;
-        if (f != null)
+
+        string[] ports = SerialPort.GetPortNames();
+        if (ports.Length == 0)
         {
-            f.scaleX += 0.5F;
-            f.scaleY += 0.5F;
-            f.Redraw();
+            MessageBox.Show("Nessuna Porta Seriale", "GcodeViewer", MessageBoxButtons.OK);
+            return;
         }
-    }
-    private void onZoomM(object sender, EventArgs e)
-    {
-        MainForm f = (MainForm)this.ActiveMdiChild;
-        if (f != null)
+
+        ParamListDialog ComConfig = new ParamListDialog("ok", "Setup Serial");
+
+        ComboBox cbComName = new ComboBox();
+        ComboBox cbComVel = new ComboBox();
+        ComboBox cbComPar = new ComboBox();
+
+        cbComName.Items.AddRange(ports);
+        cbComName.SelectedIndex = 0;
+        cbComVel.Items.Add(4800);
+        cbComVel.Items.Add(9600);
+        cbComVel.Items.Add(19200);
+        cbComVel.Items.Add(115200);
+        cbComPar.Items.Add("None");
+        cbComPar.Items.Add("Odd");
+        cbComPar.Items.Add("Even");
+        cbComPar.Items.Add("Mark");
+        cbComPar.Items.Add("Space");
+        cbComPar.SelectedIndex = 0;
+        cbComVel.SelectedIndex = 2;
+
+        ComConfig.pr.AddParam(new ParamListItemControl("nome Porta", cbComName, 25));
+        ComConfig.pr.AddParam(new ParamListItemControl("velocità", cbComVel, 25));
+        ComConfig.pr.AddParam(new ParamListItemControl("Parita", cbComPar, 25));
+
+        if (ComConfig.ShowDialog() == DialogResult.OK)
         {
-            f.scaleX -= 0.5F;
-            f.scaleY -= 0.5F;
-            f.Redraw();
+            sp.PortName = (string)cbComName.SelectedItem;
+            sp.BaudRate = (int)cbComVel.SelectedItem;
+            sp.Parity = (Parity)cbComPar.SelectedIndex;
+            sp.Handshake = System.IO.Ports.Handshake.None;
+            sp.WriteTimeout = 400;
+            sp.ReadTimeout = 400;
+            sp.StopBits = StopBits.One;
+            sp.RtsEnable = false;
+            sp.DtrEnable = false;
+            sp.DataBits = 8;
+            //sp.ParityReplace = 0x00;
         }
     }
 
-    private void onZoomS(object sender, EventArgs e)
+    private void onSerialRecv(object sender,SerialDataReceivedEventArgs e)
     {
-        MainForm f = (MainForm)this.ActiveMdiChild;
-        if (f != null)
+        if(e.EventType == SerialData.Eof)
         {
-            ParamListDialog config = new ParamListDialog("OK", "Gcode Viewer");
-            TextBox txtMPasso = new TextBox();
-            config.pr.AddParam(new ParamListItemControl("Scala", txtMPasso, 20));
-            if (config.ShowDialog() == DialogResult.OK)
+            string line = sp.ReadLine();
+            tlog.Add("R"+line);
+
+            if (line.StartsWith("ok"))
             {
-                f.scaleX = float.Parse(txtMPasso.Text);
-                f.scaleY = f.scaleX;
+                serialBusy = connbuf.Count > 0;
+                if (connbuf.Count > 0)
+                {
+                    Gcode gc = connbuf.Dequeue();
+                    tlog.Add("S:" + gc.ToString() + "\n");
+                    sp.WriteLine(gc.ToString());
+                }
+            }
+            else
+            {
+                connbuf.Clear();
+                serialBusy = false;
+            }
+
+            if (line.StartsWith("<"))
+            {
+                MainForm f = (MainForm)ActiveMdiChild;
+                //<Idle|MPos:0.000,0.000,0.000|FS:0.0,0> aggiorna la posizione
+                string[] dd = line.Split('|');
+                string[] pp = dd[1].Split(':');
+                string[] vv = pp[1].Split(',');
+                if ((0.1F).ToString().Contains(","))
+                {
+                    f.CursorX = float.Parse(vv[0].Replace('.', ',')); //non per america
+                    f.CursorY = float.Parse(vv[1].Replace('.', ','));
+                }
+                else
+                {
+                    f.CursorX = float.Parse(vv[0]);
+                    f.CursorY = float.Parse(vv[1]);
+                }
                 f.Redraw();
             }
         }
     }
 
-    private void onZoomDPI(object sender, EventArgs e)
+    public void SendGcode(Gcode gc)
     {
-        MainForm f = (MainForm)this.ActiveMdiChild;
-        if (f != null)
+        if(serialBusy)connbuf.Enqueue(gc);
+        else
         {
-            f.scaleX = this.DeviceDpi;
-            f.scaleY = this.DeviceDpi;
-            f.Redraw();
+            tlog.Add("S:" + gc.ToString() + "\n");
+            if (sp.IsOpen) sp.WriteLine(gc.ToString());
+            serialBusy = true;
         }
+
+    }
+
+    private void onstartComm(object sender, EventArgs e)
+    {
+        tlog.clear();
+        tlog.Add("Start Comm");
+        sp.Open();
+        sp.WriteLine("");
+        sp.WriteLine("");
+
+    }
+
+    private void onstopComm(object sender, EventArgs e)
+    {
+        sp.Close();
+    }
+
+    private void onUpdateComm(object sender, EventArgs e)
+    {
+        tlog.Add("S:?");
+        if (sp.IsOpen) sp.WriteLine("?");
     }
 
     private void InitializeComponent()
@@ -251,16 +330,21 @@ public class MainFormMDI : Form
         mi.DropDownItems.Add("importa File GBR", null, onGBR_imp);
         mi.DropDownItems.Add("esporta File SVG", null, onSVG_exp);
 
-        ToolStripMenuItem mi1 = new ToolStripMenuItem("Visualizza");
-        mme.Items.Add(mi1);
-        mi1.DropDownItems.Add("Zoom+", null, onZoomP);
-        mi1.DropDownItems.Add("Zoom-", null, onZoomM);
-        mi1.DropDownItems.Add("Set Zoom", null, onZoomS);
-        mi1.DropDownItems.Add("Set Zoom DPI", null, onZoomDPI);
-
-        ToolStripMenuItem mi2 = new ToolStripMenuItem("Edita");
+        ToolStripMenuItem mi2 = new ToolStripMenuItem("GBRL");
         mme.Items.Add(mi2);
-        mi2.DropDownItems.Add("Crea Recinto Interno e Esterno ", null, onZoomP);
+        mi2.DropDownItems.Add("Serial Port Setup", null, onSetupSerialPort);
+        mi2.DropDownItems.Add("Start", null, onstartComm);
+        mi2.DropDownItems.Add("Stop", null, onstopComm);
+        mi2.DropDownItems.Add("Update", null, onUpdateComm);
+
+        tlog.Dock = DockStyle.Bottom;
+        tlog.Height = 100;
+        this.Controls.Add(tlog);
+
+        sp.DataReceived += new SerialDataReceivedEventHandler(onSerialRecv);
+        sp.NewLine = "\\r\\n";
+
+
         //per scavare un pista da un path 1 trova il punto medio della figura chiusa e sottrailo poi scala maggiore e minore diametro punta fresa
         // e poi riaggiungi il punto medio alle tre figure da un figura
         this.IsMdiContainer = true;

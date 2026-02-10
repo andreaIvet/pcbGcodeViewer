@@ -75,6 +75,7 @@ public class ParamListDialog : Form
     {
         Text = titolo;
         btok.Text = buttoncap;
+        btok.Height = 30;
         btok.Dock = DockStyle.Bottom;
         btok.Click += new EventHandler(Bte);
         pr.Dock = DockStyle.Fill;
@@ -83,3 +84,41 @@ public class ParamListDialog : Form
     }
 }
 
+public class ConsolleControl : Control
+{
+    private string[] l;
+    public ConsolleControl(int lc)
+    {
+        l = new string[lc];
+        Paint += new PaintEventHandler(onpaint);
+        for (int i = 0; i < l.Length; i++) l[i] = string.Empty;
+    }
+    public void Add(string t)
+    {
+        int i = l.Length - 1;
+        while (i > 0)
+        {
+            l[i] = l[i - 1];
+            i--;
+        }
+        l[0] = t;
+        Invalidate();
+    }
+    public void clear()
+    {
+        for (int i = 0; i < l.Length; i++) l[i] = string.Empty;
+        Invalidate();
+    }
+
+    public void onpaint(object sender, PaintEventArgs e)
+    {
+        int y = 0;
+        Font f = new Font("Arial", 9F);
+        foreach(string s in l)
+        {
+            e.Graphics.DrawString(s, f, Brushes.Black, 0, y);
+            y += 11;
+        }
+    }
+
+}

@@ -13,9 +13,17 @@ public class MainForm : Form
     private System.ComponentModel.IContainer components = null;
     private System.Windows.Forms.PictureBox disegno;
     private System.Windows.Forms.SplitContainer sc;
-    private System.Windows.Forms.RichTextBox txtcode;
+    public System.Windows.Forms.ListBox txtcode;
     public float scaleX = 20F;
     public float scaleY = 20F;
+
+    //aggiornato dai <
+    public float CursorX = 0F;
+    public float CursorY = 0F;
+    public float SafeZZ = 1.0F;
+
+    private int oldIndex=0;
+
 
     public class Gcode
     {
@@ -160,20 +168,10 @@ public class MainForm : Form
         Redraw();
     }
 
-    private void onTXT(object sender, EventArgs e)
-    {
-        if (Visible)
-        {
-            //ParseGcode();                      
-            //Redraw();
-        }
-    }
 
 
     public async void ExportToSVG(String FileName)
     {
-        List<Gcode> data = new List<Gcode>();
-        ParseGcode(data);
         StreamWriter sw = new StreamWriter(FileName);
         sw.WriteLine("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
         sw.WriteLine("<svg style=\"fill:none;stroke-width:0.5;stroke-linecap:round;stroke-linejoin:round;stroke:rgb(0%,0%,0%);stroke-opacity:1;stroke-miterlimit:10;\" >");
@@ -181,7 +179,7 @@ public class MainForm : Form
         string path = string.Empty;
         bool scava = false;
         int nline = 0;
-        foreach (Gcode gc in data)
+        foreach (Gcode gc in txtcode.Items)
         {
             if (gc.code != 1 && gc.code != 0) continue;
             if (gc.vz)
@@ -208,8 +206,7 @@ public class MainForm : Form
             double x1, double y1,
             double x2, double y2,
             double x3, double y3,
-            double step,
-            List<Gcode> data)
+            double step)
     {
         step = 1.0 / step;
         double x, y;
@@ -217,17 +214,16 @@ public class MainForm : Form
         {
             x = Math.Pow(1.0 - i, 3) * x0 + 3.0 * i * Math.Pow(1.0 - i, 2) * x1 + 3.0 * (1.0 - i) * Math.Pow(i, 2) * x2 + Math.Pow(i, 3) * x3;
             y = Math.Pow(1.0 - i, 3) * y0 + 3.0 * i * Math.Pow(1.0 - i, 2) * y1 + 3.0 * (1.0 - i) * Math.Pow(i, 2) * y2 + Math.Pow(i, 3) * y3;
-            if (!data[data.Count - 1].Equals(x, y)) data.Add(new Gcode(x, y));
+            if (!((Gcode)txtcode.Items[txtcode.Items.Count - 1]).Equals(x, y)) txtcode.Items.Add(new Gcode(x, y));
         }
-        if (!data[data.Count - 1].Equals(x3, y3)) data.Add(new Gcode(x3, y3));
+        if (!((Gcode)txtcode.Items[txtcode.Items.Count - 1]).Equals(x3, y3)) txtcode.Items.Add(new Gcode(x3, y3));
     }
 
     public void Coppia2_Beize(
             double x0, double y0,
             double x1, double y1,
             double x2, double y2,
-            double step,
-            List<Gcode> data)
+            double step)
     {
         step = 1.0 / step;
         double x, y;
@@ -235,16 +231,15 @@ public class MainForm : Form
         {
             x = Math.Pow(1.0 - i, 2) * x0 + 2.0 * (1.0 - i) * i * x1 + Math.Pow(i, 2) * x2;
             y = Math.Pow(1.0 - i, 2) * y0 + 2.0 * (1.0 - i) * i * y1 + Math.Pow(i, 2) * y2;
-            if (!data[data.Count - 1].Equals(x, y)) data.Add(new Gcode(x, y));
+            if (!((Gcode)txtcode.Items[txtcode.Items.Count - 1]).Equals(x, y)) txtcode.Items.Add(new Gcode(x, y));
         }
-        if (!data[data.Count - 1].Equals(x2, y2)) data.Add(new Gcode(x2, y2));
+        if (!((Gcode)txtcode.Items[txtcode.Items.Count - 1]).Equals(x2, y2)) txtcode.Items.Add(new Gcode(x2, y2));
     }
 
     public void Coppia2_Linea(
             double x0, double y0,
             double x1, double y1,
-            double dist,
-            List<Gcode> data)
+            double dist)
     {
         double norma = Math.Sqrt((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0));
         double np = norma / dist;
@@ -255,18 +250,19 @@ public class MainForm : Form
         {
             x = x0 * (1 - i) + x1 * (i);
             y = y0 * (1 - i) + y1 * (i);
-            if (!data[data.Count - 1].Equals(x, y)) data.Add(new Gcode(x, y));
+            Gcode dd = (Gcode)txtcode.Items[txtcode.Items.Count - 1];
+            if (!dd.Equals(x, y)) txtcode.Items.Add(new Gcode(x, y));
         }
-        if (!data[data.Count - 1].Equals(x1, y1)) data.Add(new Gcode(x1, y1));
+        if (!((Gcode)txtcode.Items[txtcode.Items.Count - 1]).Equals(x1, y1)) txtcode.Items.Add(new Gcode(x1, y1));
     }
 
-    public async void ImportSVG(String SvgFileName, double passo, double dep, double scale, List<Gcode> data)
+    public async void ImportSVG(String SvgFileName, double passo, double dep, double scale)
     {
         Text = SvgFileName;
         //data.Add(new Gcode(0,0));   
-        data.Add(new Gcode("G90")); //COOCRDINATE ASSOLUTE
-        data.Add(new Gcode("M03"));
-        data.Add(new Gcode("G01 F200.00000"));
+        txtcode.Items.Add(new Gcode("G90")); //COOCRDINATE ASSOLUTE
+        txtcode.Items.Add(new Gcode("M03"));
+        txtcode.Items.Add(new Gcode("G01 F200.00000"));
 
         XmlDocument xmldoc = new XmlDocument();
         xmldoc.Load(SvgFileName);
@@ -373,16 +369,16 @@ public class MainForm : Form
                             y = b;
                             curCom = 'L';
                         }
-                        data.Add(new Gcode(5));
-                        data.Add(new Gcode(x, y));
-                        data.Add(new Gcode(-1 * dep));
+                        txtcode.Items.Add(new Gcode(5));
+                        txtcode.Items.Add(new Gcode(x, y));
+                        txtcode.Items.Add(new Gcode(-1 * dep));
                         xs = x;
                         ys = y;
                         break;
                     case 'z':
                     case 'Z':
                         curCom = vs[0][0];
-                        Coppia2_Linea(x, y, xs, ys, passo, data);
+                        Coppia2_Linea(x, y, xs, ys, passo);
                         x = xs;
                         y = ys;
                         vs.RemoveAt(0);
@@ -423,13 +419,13 @@ public class MainForm : Form
                             b = a * bb + b * dd + ff;
                             if (curCom == 'l')
                             {
-                                Coppia2_Linea(x, y, x + a, y + b, passo, data);
+                                Coppia2_Linea(x, y, x + a, y + b, passo);
                                 x += a;
                                 y += b;
                             }
                             if (curCom == 'L')
                             {
-                                Coppia2_Linea(x, y, a, b, passo, data);
+                                Coppia2_Linea(x, y, a, b, passo);
                                 x = a;
                                 y = b;
                             }
@@ -448,13 +444,13 @@ public class MainForm : Form
                             b = a * bb + b * dd + ff;
                             if (curCom == 'q')
                             {
-                                Coppia2_Beize(x, y, a + x, b + y, c + x, d + y, passo, data);
+                                Coppia2_Beize(x, y, a + x, b + y, c + x, d + y, passo);
                                 x += c;
                                 y += d;
                             }
                             if (curCom == 'Q')
                             {
-                                Coppia2_Beize(x, y, a, b, c, d, passo, data);
+                                Coppia2_Beize(x, y, a, b, c, d, passo);
                                 x = c;
                                 y = d;
                             }
@@ -477,13 +473,13 @@ public class MainForm : Form
                             b = a * bb + b * dd + ff;
                             if (curCom == 'c')
                             {
-                                Coppia2_Beize(x, y, a + x, b + y, c + x, d + y, e + x, f + y, passo, data);
+                                Coppia2_Beize(x, y, a + x, b + y, c + x, d + y, e + x, f + y, passo);
                                 x += e;
                                 y += f;
                             }
                             if (curCom == 'C')
                             {
-                                Coppia2_Beize(x, y, a, b, c, d, e, f, passo, data);
+                                Coppia2_Beize(x, y, a, b, c, d, e, f, passo);
                                 x = e;
                                 y = f;
                             }
@@ -495,22 +491,22 @@ public class MainForm : Form
                             vs.RemoveAt(0);
                             if (curCom == 'h')
                             {
-                                Coppia2_Linea(x, y, x + a, y, passo, data);
+                                Coppia2_Linea(x, y, x + a, y, passo);
                                 x += a;
                             }
                             if (curCom == 'H')
                             {
-                                Coppia2_Linea(x, y, a, y, passo, data);
+                                Coppia2_Linea(x, y, a, y, passo);
                                 x = a;
                             }
                             if (curCom == 'v')
                             {
-                                Coppia2_Linea(x, y, x, y + a, passo, data);
+                                Coppia2_Linea(x, y, x, y + a, passo);
                                 y += a;
                             }
                             if (curCom == 'V')
                             {
-                                Coppia2_Linea(x, y, x, a, passo, data);
+                                Coppia2_Linea(x, y, x, a, passo);
                                 y = a;
                             }
                         }
@@ -524,40 +520,37 @@ public class MainForm : Form
             }
         }
 
-        data.Add(new Gcode(5));
-        data.Add(new Gcode(0, 0));
-        data.Add(new Gcode("M5"));
-        data.Add(new Gcode("M9"));
-        data.Add(new Gcode("M2"));
+        txtcode.Items.Add(new Gcode(5));
+        txtcode.Items.Add(new Gcode(0, 0));
+        txtcode.Items.Add(new Gcode("M5"));
+        txtcode.Items.Add(new Gcode("M9"));
+        txtcode.Items.Add(new Gcode("M2"));
         Console.WriteLine("end import svg");
-        filltext(data);
     }
 
     public async void LoadGC(string FileName)
     {
         Text = FileName;
-        List<Gcode> data = new List<Gcode>();
         StreamReader fg = new StreamReader(FileName);
         string li;
         while ((li = fg.ReadLine()) != null)
         {
             if (li.Length == 0) continue;
             if (li[0] == '(') continue;
-            data.Add(new Gcode(li));
+            txtcode.Items.Add(new Gcode(li));
         }
-        filltext(data);
     }
 
     public void SaveGcode(string Filename)
     {
         StreamWriter sw = new StreamWriter(Filename);
-        sw.WriteLine(txtcode.Text);
+        foreach (Gcode gc in txtcode.Items) sw.WriteLine(gc.ToString());
         sw.Flush();
         sw.Close();
         Text = Filename;
     }
 
-    public void ImportDrill(string FileName, double dep, double scale, List<Gcode> data)
+    public void ImportDrill(string FileName, double dep, double scale)
     {
         StreamReader fg = new StreamReader(FileName);
         string li;
@@ -571,48 +564,17 @@ public class MainForm : Form
             if (py == -1) continue;
             double x = Double.Parse(li.Substring(1, py - 1));
             double y = Math.Abs(Double.Parse(li.Substring(py + 1)));
-            data.Add(new Gcode(5));
-            data.Add(new Gcode(x * scale, y * scale));
-            data.Add(new Gcode(-1 * dep));
+            txtcode.Items.Add(new Gcode(5));
+            txtcode.Items.Add(new Gcode(x * scale, y * scale));
+            txtcode.Items.Add(new Gcode(-1 * dep));
         }
-        data.Add(new Gcode(5));
-        filltext(data);
+        txtcode.Items.Add(new Gcode(5));
     }
 
-    public void ParseGcode(List<Gcode> data)
-    {
-        StringReader sr = new StringReader(txtcode.Text);
-        string line;
-        while ((line = sr.ReadLine()) != null)
-        {
-            if (line.Length == 0) continue;
-            Gcode gc = new Gcode(line);
-            data.Add(gc);
-        }
-    }
-
-    public void filltext(List<Gcode> data)
-    {
-        string txt = string.Empty;
-        foreach (Gcode gc in data)
-        {
-            txt += gc.ToString() + '\r' + '\n';
-        }
-        txtcode.Clear();
-        txtcode.AppendText(txt);
-
-    }
-
-    public void Print(Gcode gc)
-    {
-        txtcode.AppendText(gc.ToString() + '\r' + '\n');
-    }
 
     public async void Redraw()
     {
-        List<Gcode> data = new List<Gcode>();
-        ParseGcode(data);
-        if (data.Count == 0) return;
+        if (txtcode.Items.Count == 0) return;
         Pen blackPen = new Pen(Color.Red, 2);
         Pen blackGreen = new Pen(Color.Green, 2);
         Pen cPen = blackPen;
@@ -622,7 +584,7 @@ public class MainForm : Form
         double maxx = Double.MinValue;
         double maxy = Double.MinValue;
 
-        foreach (Gcode gc in data)
+        foreach (Gcode gc in txtcode.Items)
         {
             if (gc.vx)
             {
@@ -655,9 +617,22 @@ public class MainForm : Form
         g.DrawString("Dimansion " + (maxx - minx) + "x" + (maxy - miny), this.Font, Brushes.Black, 0, 0);
         double xo = 0;
         double yo = 0;
+        Brush br = Brushes.Black;
+        int rr = 3;
 
-        foreach (Gcode gc in data)
+        foreach (Gcode gc in txtcode.Items)
         {
+            if (gc.Equals(txtcode.SelectedItem))
+            {
+                br = Brushes.Yellow;
+                rr = 10;
+            }
+            else
+            {
+                br = Brushes.Black;
+                rr = 3;
+            }
+
             if (gc.vz)
             {
                 if (gc.z < 0.1)
@@ -678,19 +653,105 @@ public class MainForm : Form
                     (int)(yo * scaleY),
                     (int)(x * scaleX),
                     (int)(y * scaleY));
-                    g.FillEllipse(Brushes.Black,
-                    (int)(x * scaleX) - 3,
-                    (int)(y * scaleY) - 3, 6, 6);
+                    g.FillEllipse(br,
+                    (int)(x * scaleX) - rr,
+                    (int)(y * scaleY) - rr, 2*rr, 2*rr);
                     xo = x;
                     yo = y;
                 }
             }
         }
+
+        g.FillEllipse(Brushes.Red,
+            (int)(CursorX * scaleX) - 10,
+            (int)(CursorY * scaleY) - 10, 2 * 10, 2 * 10);
+
         g.Dispose();
         //disegno.BackgroundImage = bmp;
         disegno.Image = bmp;
     }
 
+    public void onselect(object sender,EventArgs e)
+    {
+        Redraw();
+    }
+
+    public void selectnext()
+    {
+        oldIndex = txtcode.SelectedIndex;
+        txtcode.SelectedIndex++;
+    }
+
+    public void onkey(object sender, KeyEventArgs e)
+    {
+        MainFormMDI o = (MainFormMDI)MdiParent;
+        switch (e.KeyCode)
+        {
+            case Keys.Space:
+                if (Math.Abs(oldIndex - txtcode.SelectedIndex) > 1)
+                {
+                    o.SendGcode(new Gcode(SafeZZ));
+                    o.SendGcode((Gcode)txtcode.SelectedItem);
+                    o.SendGcode(new Gcode(0.1F));
+                }
+                else
+                {
+                    o.SendGcode((Gcode)txtcode.SelectedItem);
+                }
+                selectnext();
+                break;
+            case Keys.U:
+                o.SendGcode(new Gcode(SafeZZ));
+                break;
+            case Keys.D:
+                o.SendGcode(new Gcode(0.1F));
+                break;
+            case Keys.R:
+                o.SendGcode(new Gcode("M3"));
+                break;
+            case Keys.S:
+                o.SendGcode(new Gcode("M5"));
+                break;
+        }
+    }
+
+    public void onConvertLaser(object sender, EventArgs e)
+    {
+        Redraw();
+    }
+
+    private void onZoomP(object sender, EventArgs e)
+    {
+        scaleX += 0.5F;
+        scaleY += 0.5F;
+        Redraw();
+    }
+    private void onZoomM(object sender, EventArgs e)
+    {
+        scaleX -= 0.5F;
+        scaleY -= 0.5F;
+        Redraw();
+    }
+
+    private void onZoomS(object sender, EventArgs e)
+    {
+        ParamListDialog config = new ParamListDialog("OK", "Gcode Viewer");
+        TextBox txtMPasso = new TextBox();
+        config.pr.AddParam(new ParamListItemControl("Scala", txtMPasso, 20));
+        if (config.ShowDialog() == DialogResult.OK)
+        {
+            scaleX = float.Parse(txtMPasso.Text);
+            scaleY = scaleX;
+            Redraw();
+        }  
+    }
+
+    private void onZoomDPI(object sender, EventArgs e)
+    {
+        scaleX = this.DeviceDpi;
+        scaleY = this.DeviceDpi;
+        Redraw();
+    }
 
     private void InitializeComponent()
     {
@@ -707,23 +768,40 @@ public class MainForm : Form
 
         sc = new SplitContainer();
         sc.Dock = DockStyle.Fill;
-        txtcode = new RichTextBox();
+        txtcode = new ListBox();
         txtcode.Dock = DockStyle.Fill;
         sc.Panel2.Controls.Add(disegno);
         sc.Panel2.AutoScroll = true;
         sc.Panel1.Controls.Add(txtcode);
 
+        MenuStrip mme = new MenuStrip();
+
+        ToolStripMenuItem mi1 = new ToolStripMenuItem("Visualizza");
+        mme.Items.Add(mi1);
+        mi1.DropDownItems.Add("Zoom+", null, onZoomP);
+        mi1.DropDownItems.Add("Zoom-", null, onZoomM);
+        mi1.DropDownItems.Add("Set Zoom", null, onZoomS);
+        mi1.DropDownItems.Add("Set Zoom DPI", null, onZoomDPI);
+
+        ToolStripMenuItem mi2 = new ToolStripMenuItem("Edit");
+        mi2.DropDownItems.Add("Convert to Laser", null, onConvertLaser);
+        mme.Items.Add(mi2);
+
+
+        this.MainMenuStrip = mme;
         this.components = new System.ComponentModel.Container();
         this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
         this.ClientSize = new System.Drawing.Size(800, 450);
         this.Text = "Gcode Viewer";
         this.Controls.Add(sc);
+        this.Controls.Add(mme);
     }
 
     public MainForm()
     {
         InitializeComponent();
         this.Load += new EventHandler(onFrmLoad);
-        txtcode.TextChanged += new EventHandler(onTXT);
+        txtcode.SelectedIndexChanged += new EventHandler(onselect);
+        txtcode.KeyDown += new KeyEventHandler(onkey);
     }
 }
