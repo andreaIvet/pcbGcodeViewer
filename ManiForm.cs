@@ -22,6 +22,11 @@ public class MainForm : Form
     public float CursorY = 0F;
     public float SafeZZ = 1.0F;
 
+    double minx = Double.MaxValue;
+    double miny = Double.MaxValue;
+    double maxx = Double.MinValue;
+    double maxy = Double.MinValue;
+
     private int oldIndex=0;
 
 
@@ -51,6 +56,27 @@ public class MainForm : Form
             vy = false;
             vz = false;
             code = -1;
+        }
+
+        public Gcode(Gcode c)
+        {
+            x = c.x;
+            y = c.y;
+            z = c.z;
+
+            f = c.f;
+            p = c.p;
+            s = c.s;
+
+            vx = c.vx;
+            vy = c.vy;
+            vz = c.vz;
+
+            vf = c.vf;
+            vp = c.vp;
+            vs = c.vs;
+
+            code = c.code;
         }
 
         public Gcode(string line)
@@ -179,8 +205,10 @@ public class MainForm : Form
         string path = string.Empty;
         bool scava = false;
         int nline = 0;
-        foreach (Gcode gc in txtcode.Items)
+
+        for (int ic = 0; ic < txtcode.Items.Count; ic++)
         {
+            Gcode gc = (Gcode)txtcode.Items[ic];
             if (gc.code != 1 && gc.code != 0) continue;
             if (gc.vz)
             {
@@ -258,6 +286,7 @@ public class MainForm : Form
 
     public async void ImportSVG(String SvgFileName, double passo, double dep, double scale)
     {
+        txtcode.SuspendLayout();
         Text = SvgFileName;
         //data.Add(new Gcode(0,0));   
         txtcode.Items.Add(new Gcode("G90")); //COOCRDINATE ASSOLUTE
@@ -525,6 +554,7 @@ public class MainForm : Form
         txtcode.Items.Add(new Gcode("M5"));
         txtcode.Items.Add(new Gcode("M9"));
         txtcode.Items.Add(new Gcode("M2"));
+        txtcode.ResumeLayout();
         Console.WriteLine("end import svg");
     }
 
@@ -533,12 +563,14 @@ public class MainForm : Form
         Text = FileName;
         StreamReader fg = new StreamReader(FileName);
         string li;
+        txtcode.SuspendLayout();
         while ((li = fg.ReadLine()) != null)
         {
             if (li.Length == 0) continue;
             if (li[0] == '(') continue;
             txtcode.Items.Add(new Gcode(li));
         }
+        txtcode.ResumeLayout();
     }
 
     public void SaveGcode(string Filename)
@@ -571,21 +603,16 @@ public class MainForm : Form
         txtcode.Items.Add(new Gcode(5));
     }
 
-
-    public async void Redraw()
+    public void getrec()
     {
-        if (txtcode.Items.Count == 0) return;
-        Pen blackPen = new Pen(Color.Red, 2);
-        Pen blackGreen = new Pen(Color.Green, 2);
-        Pen cPen = blackPen;
+        minx = Double.MaxValue;
+        miny = Double.MaxValue;
+        maxx = Double.MinValue;
+        maxy = Double.MinValue;
 
-        double minx = Double.MaxValue;
-        double miny = Double.MaxValue;
-        double maxx = Double.MinValue;
-        double maxy = Double.MinValue;
-
-        foreach (Gcode gc in txtcode.Items)
+        for (int ic = 0; ic < txtcode.Items.Count; ic++)
         {
+            Gcode gc = (Gcode)txtcode.Items[ic];
             if (gc.vx)
             {
                 if (gc.x < minx)
@@ -609,19 +636,30 @@ public class MainForm : Form
                 }
             }
         }
+    }
+
+    public async void Redraw()
+    {
+        if (txtcode.Items.Count == 0) return;
+        Pen blackPen = new Pen(Color.Red, 2);
+        Pen blackGreen = new Pen(Color.Green, 2);
+        Pen cPen = blackPen;
+
+        getrec();
 
         int margin = 3;
         Bitmap bmp = new Bitmap((int)((maxx - minx + margin * 2) * scaleX), (int)((maxy - miny + margin * 2) * scaleY));
         Graphics g = Graphics.FromImage(bmp);
         g.FillRectangle(Brushes.White, 0, 0, bmp.Width, bmp.Height);
-        g.DrawString("Dimansion " + (maxx - minx) + "x" + (maxy - miny), this.Font, Brushes.Black, 0, 0);
+        g.DrawString("Dimension " + (int)(maxx - minx) + " x " + (int)(maxy - miny), this.Font, Brushes.Black, 0, 0);
         double xo = 0;
         double yo = 0;
         Brush br = Brushes.Black;
         int rr = 3;
 
-        foreach (Gcode gc in txtcode.Items)
+        for(int ic=0;ic<txtcode.Items.Count;ic++)
         {
+            Gcode gc = (Gcode)txtcode.Items[ic];
             if (gc.Equals(txtcode.SelectedItem))
             {
                 br = Brushes.Yellow;
@@ -733,6 +771,44 @@ public class MainForm : Form
         Redraw();
     }
 
+    private void onPlate(object sender, EventArgs e)
+    {
+        ParamListDialog config = new ParamListDialog("OK", "Plate");
+
+        getrec();
+
+        TextBox txtW = new TextBox();
+        TextBox txtH = new TextBox();
+        txtW.Text = (minx + maxx).ToString();
+        txtH.Text = (miny + maxy).ToString();
+
+        config.pr.AddParam(new ParamListItemControl("Plate W", txtW, 20));
+        config.pr.AddParam(new ParamListItemControl("Plate H", txtH, 20));
+
+        if (config.ShowDialog() == DialogResult.OK)
+        {
+            double xcp = double.Parse(txtW.Text)/2.0;
+            double ycp = double.Parse(txtH.Text)/2.0;
+            double xd = 0;
+            double yd = 0;
+           
+
+            xd = xcp - (maxx + minx) / 2;
+            yd = ycp - (maxy + miny) / 2;
+
+            txtcode.SuspendLayout();
+            for (int ic = 0; ic < txtcode.Items.Count; ic++)
+            {
+                Gcode gc = (Gcode)txtcode.Items[ic];
+                gc.x += xd;
+                gc.y += yd;
+                txtcode.Items[ic] = new Gcode(gc);
+            }
+            txtcode.ResumeLayout();
+            Redraw();
+        }
+    }
+
     private void onZoomS(object sender, EventArgs e)
     {
         ParamListDialog config = new ParamListDialog("OK", "Gcode Viewer");
@@ -785,6 +861,7 @@ public class MainForm : Form
 
         ToolStripMenuItem mi2 = new ToolStripMenuItem("Edit");
         mi2.DropDownItems.Add("Convert to Laser", null, onConvertLaser);
+        mi2.DropDownItems.Add("Center Plate size", null, onPlate);
         mme.Items.Add(mi2);
 
 

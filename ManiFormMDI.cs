@@ -9,6 +9,8 @@ using static MainForm;
 using System.Drawing;
 using System.Diagnostics;
 using System.Threading;
+using System.Drawing.Printing;
+using static System.Runtime.CompilerServices.RuntimeHelpers;
 
 public class MainFormMDI : Form
 {
@@ -30,9 +32,9 @@ public class MainFormMDI : Form
             txtMPasso.Text = "5";
             txtProf.Text = "0,01";
             txtscale.Text = "1";
-            svgconfig.pr.AddParam(new ParamListItemControl("minimo passo", txtMPasso, 20));
-            svgconfig.pr.AddParam(new ParamListItemControl("profondita ", txtProf, 20));
-            svgconfig.pr.AddParam(new ParamListItemControl("scala ", txtscale, 20));
+            svgconfig.pr.AddParam(new ParamListItemControl("max step", txtMPasso, 20));
+            svgconfig.pr.AddParam(new ParamListItemControl("deep ", txtProf, 20));
+            svgconfig.pr.AddParam(new ParamListItemControl("scale ", txtscale, 20));
             if (svgconfig.ShowDialog() == DialogResult.OK)
             {
                 MainForm f = new MainForm();
@@ -100,6 +102,7 @@ public class MainFormMDI : Form
                 onAggiungi(fn + "-drill.ngc",f);
                 f.txtcode.Items.Add(new Gcode("M5"));
                 f.txtcode.Items.Add(new Gcode("M2"));
+                f.Show();
             }
         }
     }
@@ -142,7 +145,7 @@ public class MainFormMDI : Form
     {
         StreamReader fg = new StreamReader(FileName);
         string li;
-        f.Hide();
+        f.txtcode.SuspendLayout();
         while ((li = fg.ReadLine()) != null)
         {
             if (li.Length == 0) continue;
@@ -151,8 +154,7 @@ public class MainFormMDI : Form
             if ((gg.letter == 'G' && (gg.code == 0 || gg.code == 1)) || (gg.letter == 'M' && gg.code == 3)) f.txtcode.Items.Add(gg);
         }
         fg.Close();
-        f.Redraw();
-        f.Show();
+        f.txtcode.ResumeLayout();
     }
 
     private void onAggiungi(object sender, EventArgs e)
@@ -169,6 +171,7 @@ public class MainFormMDI : Form
             }
 
             onAggiungi(ofd.FileName,f);
+            f.Show();
         }
     }
 
@@ -214,9 +217,9 @@ public class MainFormMDI : Form
         cbComPar.SelectedIndex = 0;
         cbComVel.SelectedIndex = 2;
 
-        ComConfig.pr.AddParam(new ParamListItemControl("nome Porta", cbComName, 25));
-        ComConfig.pr.AddParam(new ParamListItemControl("velocità", cbComVel, 25));
-        ComConfig.pr.AddParam(new ParamListItemControl("Parita", cbComPar, 25));
+        ComConfig.pr.AddParam(new ParamListItemControl("name", cbComName, 25));
+        ComConfig.pr.AddParam(new ParamListItemControl("baud", cbComVel, 25));
+        ComConfig.pr.AddParam(new ParamListItemControl("parity", cbComPar, 25));
 
         if (ComConfig.ShowDialog() == DialogResult.OK)
         {
@@ -295,10 +298,12 @@ public class MainFormMDI : Form
     {
         tlog.clear();
         tlog.Add("Start Comm");
-        sp.Open();
-        sp.WriteLine("");
-        sp.WriteLine("");
-
+        if (sp.IsOpen)
+        {
+            sp.Open();
+            sp.WriteLine("");
+            sp.WriteLine("");
+        }
     }
 
     private void onstopComm(object sender, EventArgs e)
@@ -312,6 +317,111 @@ public class MainFormMDI : Form
         if (sp.IsOpen) sp.WriteLine("?");
     }
 
+    private void onCreateGears(object sender, EventArgs e)
+    {
+        ParamListDialog gn = new ParamListDialog("Create", "Setup gears");
+        
+        TextBox txtr1 = new TextBox();
+        TextBox txtr2 = new TextBox();
+        TextBox txtrd = new TextBox();
+        TextBox txtp = new TextBox();
+        TextBox txtk1 = new TextBox();
+        TextBox txts = new TextBox();
+        TextBox txtdeep = new TextBox();
+
+        txtr1.Text = "10";
+        txtr2.Text = "20";
+        txtk1.Text = "15";
+        txtrd.Text = "1";
+        txtp.Text = "3";
+        txts.Text = "4";
+        txtdeep.Text = "-1,0";
+
+        gn.pr.AddParam(new ParamListItemControl("raggio 1", txtr1, 25));
+        gn.pr.AddParam(new ParamListItemControl("raggio 2", txtr2, 25));
+        gn.pr.AddParam(new ParamListItemControl("delta r", txtrd, 25));
+        gn.pr.AddParam(new ParamListItemControl("r pignone", txtp, 25));
+        gn.pr.AddParam(new ParamListItemControl("k", txtk1, 25));
+        gn.pr.AddParam(new ParamListItemControl("step", txts, 25));
+        gn.pr.AddParam(new ParamListItemControl("deep", txtdeep, 25));
+
+
+        if (gn.ShowDialog() == DialogResult.OK)
+        {
+            double r1 = double.Parse(txtr1.Text);
+            double r2 = double.Parse(txtr2.Text);
+            double rd = double.Parse(txtrd.Text);
+            double step1 = double.Parse(txts.Text)*2*Math.PI/360.0;
+            double k1 = double.Parse(txtk1.Text);
+            double rp = double.Parse(txtp.Text);
+            double z = double.Parse(txtdeep.Text);
+            double k2 = k1 / r1 * r2;
+            double step2 = step1 / r2 * r1;
+            int margin = 5;
+
+            int y0 = (int)(r1 + rd);
+            if(r2>r1) y0 = (int)(r2 + rd);
+            y0 += margin;
+
+            MainForm f = new MainForm();
+            f.scaleX = 10;
+            f.scaleY = 10;
+
+            //g1
+            f.txtcode.Items.Add(new Gcode(5));
+            f.txtcode.Items.Add(new Gcode(margin + r1 * 2 + rd * 2, y0));
+            f.txtcode.Items.Add(new Gcode(z));
+            for (double a = 0; a < Math.PI * 2; a+= step1)
+            {
+                double x = (r1 + rd * Math.Cos(a * k1)) * Math.Cos(a);
+                double y = (r1 + rd * Math.Cos(a * k1)) * Math.Sin(a);
+                f.txtcode.Items.Add(new Gcode(margin + r1 + rd + x, y0 + y));
+            }
+            f.txtcode.Items.Add(new Gcode(margin + r1 * 2 + rd * 2, y0));
+            f.txtcode.Items.Add(new Gcode(5));
+
+            //pignone
+            f.txtcode.Items.Add(new Gcode(margin + r1 + rd + rp, y0));
+            f.txtcode.Items.Add(new Gcode(z));
+            for (double a = 0; a < Math.PI / 2 * 3; a += Math.PI/5) {
+                double x = rp * Math.Cos(a);
+                double y = rp * Math.Sin(a);
+                f.txtcode.Items.Add(new Gcode(margin + r1 + rd + x, y0 + y)); 
+            }
+            f.txtcode.Items.Add(new Gcode(margin + r1 + rd + rp, y0));
+            f.txtcode.Items.Add(new Gcode(5));
+
+            //pignone
+            f.txtcode.Items.Add(new Gcode(margin * 2 + r1 * 2 + rd * 3 + rp + r2, y0));
+            f.txtcode.Items.Add(new Gcode(z));
+            for (double a = 0; a < Math.PI / 2 * 3; a += Math.PI / 5)
+            {
+                double x = rp * Math.Cos(a);
+                double y = rp * Math.Sin(a);
+                f.txtcode.Items.Add(new Gcode(margin * 2 + r1 * 2 + rd * 3 + r2+x, y0 + y));
+            }
+            f.txtcode.Items.Add(new Gcode(margin * 2 + r1 * 2 + rd * 3 + rp + r2, y0));
+            f.txtcode.Items.Add(new Gcode(5));
+
+
+            //g2
+            f.txtcode.Items.Add(new Gcode(margin * 2 + r1 * 2 + rd * 4 + r2 * 2, y0));
+            f.txtcode.Items.Add(new Gcode(z));
+            for (double a = 0; a < Math.PI * 2; a += step2)
+            {
+                double x = (r2 + rd * Math.Cos(a * k2)) * Math.Cos(a);
+                double y = (r2 + rd * Math.Cos(a * k2)) * Math.Sin(a);
+                f.txtcode.Items.Add(new Gcode(margin * 2 + r1 * 2 + r2 + rd * 3 + x, y0 + y));
+            }
+            f.txtcode.Items.Add(new Gcode(margin * 2 + r1 * 2 + rd * 4 + r2 * 2, y0));
+            f.txtcode.Items.Add(new Gcode(5));
+
+
+            f.MdiParent = this;
+            f.Show();
+        }
+    }
+
     private void InitializeComponent()
     {
         this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
@@ -322,13 +432,14 @@ public class MainFormMDI : Form
 
         ToolStripMenuItem mi = new ToolStripMenuItem("File");
         mme.Items.Add(mi);
-        mi.DropDownItems.Add("Nuovo", null, onNEW);
-        mi.DropDownItems.Add("Carica", null, onLOAD);
-        mi.DropDownItems.Add("Accoda", null, onAggiungi);
-        mi.DropDownItems.Add("Salva", null, onSAVE);
-        mi.DropDownItems.Add("importa File SVG", null, onSVG_imp);
-        mi.DropDownItems.Add("importa File GBR", null, onGBR_imp);
-        mi.DropDownItems.Add("esporta File SVG", null, onSVG_exp);
+        mi.DropDownItems.Add("new", null, onNEW);
+        mi.DropDownItems.Add("load", null, onLOAD);
+        mi.DropDownItems.Add("append", null, onAggiungi);
+        mi.DropDownItems.Add("Save", null, onSAVE);
+        mi.DropDownItems.Add("import File SVG", null, onSVG_imp);
+        mi.DropDownItems.Add("import File GBR", null, onGBR_imp);
+        mi.DropDownItems.Add("export File SVG", null, onSVG_exp);
+        mi.DropDownItems.Add("Create Gears", null, onCreateGears);
 
         ToolStripMenuItem mi2 = new ToolStripMenuItem("GBRL");
         mme.Items.Add(mi2);
